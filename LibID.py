@@ -14,13 +14,14 @@ import time
 from itertools import izip, repeat
 from multiprocessing import Pool
 from os import path
+from zipfile import ZipFile
 
 import glob2
 from datasketch import MinHashLSHEnsemble
 
 from module import profiler
 from module.analyzer import LibAnalyzer
-from module.config import (DEX2JAR_PATH, LOGGER, LSH_PERM_NUM, LSH_THRESHOLD,
+from module.config import (DEX2JAR_PATH, AAR2JAR_PATH, LOGGER, LSH_PERM_NUM, LSH_THRESHOLD,
                            MODE)
 
 LSH = None
@@ -107,9 +108,31 @@ def _profile_apps(apk_files,
 
 def _profile_libs(dex_files,
                   jar_files,
+                  aar_files,
                   output_folder="profiles",
                   processes=None,
                   overwrite=False):
+
+    for f in aar_files:
+        jar_file_path = path.join(
+            path.dirname(f),
+            path.basename(f)[:-4] + ".jar")
+
+        if not path.exists(jar_file_path):
+            LOGGER.info("Converting %s to %s ...", path.basename(f),
+                        path.basename(jar_file_path))
+            cmd = "{} {} {}".format(AAR2JAR_PATH, f, jar_file_path)
+            try:
+                subprocess.check_output(cmd, shell=True)
+                LOGGER.info("Converted")
+
+                jar_files.append(jar_file_path)
+            except:
+                LOGGER.error("Conversion failed")
+                continue
+        else:
+            LOGGER.info("Already converted.")
+
     # Convert jar file to dex file
     for f in jar_files:
         dex_file_path = path.join(
@@ -129,6 +152,8 @@ def _profile_libs(dex_files,
             except:
                 LOGGER.error("Conversion failed")
                 continue
+        else:
+            LOGGER.info("Already converted.")
 
     if dex_files:
         profiler.parallel_profiling_binaries(
@@ -137,7 +162,6 @@ def _profile_libs(dex_files,
             "lib",
             processes=processes,
             overwrite=overwrite)
-
 
 def profile_binaries(base_path=None,
                      file_paths=None,
@@ -155,18 +179,30 @@ def profile_binaries(base_path=None,
         processes (int, optional): Defaults to None. The number of processes to use. If processes is None then the number returned by cpu_count() is used.
         overwrite (bool, optional): Defaults to False. Should LibID overwrite the output file if it exists?
     """
-
+    apk_files = []
+    dex_files = []
+    jar_files = []
+    aar_files = []
     if not file_paths:
         if base_path:
             apk_files = glob2.glob(path.join(base_path, "**/*.apk"))
             dex_files = glob2.glob(path.join(base_path, "**/*.dex"))
             jar_files = glob2.glob(path.join(base_path, "**/*.jar"))
+            aar_files = glob2.glob(path.join(base_path, "**/*.aar"))
         else:
             LOGGER.error("No valid folder or file path provided.")
     else:
-        apk_files = [f for f in file_paths if f[-4:] == '.apk']
-        dex_files = [f for f in file_paths if f[-4:] == '.dex']
-        jar_files = [f for f in file_paths if f[-4:] == '.jar']
+        for f in file_paths:
+            if f[-4:] == '.apk':
+                apk_files.append(f)
+            elif f[-4:] == '.dex':
+                dex_files.append(f)
+            elif f[-4:] == '.jar':
+                jar_files.append(f)
+            elif f[-4:] == '.aar':
+                aar_files.append(f)
+            else:
+                LOGGER.error("Invalid file format {}".format(f))
 
     _profile_apps(
         apk_files,
@@ -176,6 +212,7 @@ def profile_binaries(base_path=None,
     _profile_libs(
         dex_files,
         jar_files,
+        aar_files,
         output_folder=output_folder,
         processes=processes,
         overwrite=overwrite)
@@ -232,7 +269,7 @@ def search_libs_in_apps(lib_folder=None,
         mode (<enum 'MODE'>, optional): Defaults to MODE.SCALABLE. The detection mode. Either MODE.ACCURATE or MODE.SCALABLE. See the paper for more details.
         overwrite (bool, optional): Defaults to False. Should LibID overwrite the output file if it exists?
         output_folder (str, optional): Defaults to 'outputs'. The folder to store results.
-        repackage (bool, optional): Defaults to False. Should LibID consider classes repackaging? This should only be enabled if already know classes repackaging is applied. 
+        repackage (bool, optional): Defaults to False. Should LibID consider classes repackaging? This should only be enabled if already know classes repackaging is applied.
         processes (int, optional): Defaults to None. The number of processes to use. If processes is None then the number returned by cpu_count() is used.
         exclude_builtin (bool, optional): Defaults to True. Should LibID exclude builtin Android libraries (e.g., Android Support V14)? Enable this option can speed up the detection process.
     """

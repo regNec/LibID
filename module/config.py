@@ -20,6 +20,9 @@ ANDROID_SDK_PATH = os.path.join(
 DEX2JAR_PATH = os.path.join(
     os.path.dirname(__file__), '../dex2jar/d2j-jar2dex.sh')
 
+AAR2JAR_PATH = os.path.join(
+    os.path.dirname(__file__), '../aar2jar.sh')
+
 MODE = Enum('MODE', 'SCALABLE ACCURATE')
 
 with open(ANDROID_SDK_PATH, "rb") as fd:
